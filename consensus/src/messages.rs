@@ -1,4 +1,3 @@
-use crate::commitor::MAX_BLOCK_BUFFER;
 use crate::config::Committee;
 use crate::core::SeqNumber;
 use crate::error::{ConsensusError, ConsensusResult};
@@ -64,8 +63,7 @@ impl Block {
 
     // block`s rank
     pub fn rank(&self, committee: &Committee) -> usize {
-        let r =
-            ((self.epoch as usize) * committee.size() + (self.height as usize)) % MAX_BLOCK_BUFFER;
+        let r = (self.epoch as usize) * committee.size() + (self.height as usize);
         r
     }
 }
@@ -155,8 +153,7 @@ impl EchoVote {
     }
 
     pub fn rank(&self, committee: &Committee) -> usize {
-        let r =
-            ((self.epoch as usize) * committee.size() + (self.height as usize)) % MAX_BLOCK_BUFFER;
+        let r = (self.epoch as usize) * committee.size() + (self.height as usize);
         r
     }
 }
@@ -241,8 +238,7 @@ impl ReadyVote {
     }
 
     pub fn rank(&self, committee: &Committee) -> usize {
-        let r =
-            ((self.epoch as usize) * committee.size() + (self.height as usize)) % MAX_BLOCK_BUFFER;
+        let r = (self.epoch as usize) * committee.size() + (self.height as usize);
         r
     }
 }
@@ -336,33 +332,39 @@ impl fmt::Display for RBCProof {
 
 /************************** RBC Struct ************************************/
 
-/************************** prepare Struct ************************************/
+/************************** SMVBA Struct ************************************/
 #[derive(Serialize, Deserialize, Default, Clone)]
-pub struct Prepare {
+pub struct SMVBAProposal {
     pub author: PublicKey,
     pub epoch: SeqNumber,
     pub height: SeqNumber,
-    pub val: u8,
+    pub round: SeqNumber, //SMVBA 的轮数
+    pub phase: u8,        //SPB 的阶段（VAL，AUX）
+    pub vals: Vec<bool>,
     pub signature: Signature,
 }
 
-impl Prepare {
-    pub async fn new(
+impl SMVBAProposal {
+    pub fn new(
         author: PublicKey,
         epoch: SeqNumber,
         height: SeqNumber,
-        val: u8,
+        round: SeqNumber,
+        phase: u8,
+        vals: Vec<bool>,
         mut signature_service: SignatureService,
     ) -> Self {
-        let mut prepare = Self {
+        let mut proposal = Self {
             author,
             epoch,
             height,
-            val,
+            round,
+            phase,
+            vals,
             signature: Signature::default(),
         };
-        prepare.signature = signature_service.request_signature(prepare.digest()).await;
-        return prepare;
+        proposal.signature = signature_service.request_signature(proposal.digest());
+        return proposal;
     }
 
     pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
@@ -378,39 +380,308 @@ impl Prepare {
 
         Ok(())
     }
-
-    pub fn rank(&self, committee: &Committee) -> usize {
-        let r =
-            ((self.epoch as usize) * committee.size() + (self.height as usize)) % MAX_BLOCK_BUFFER;
-        r
-    }
 }
 
-impl Hash for Prepare {
+impl Hash for SMVBAProposal {
     fn digest(&self) -> Digest {
         let mut hasher = Sha512::new();
         hasher.update(self.author.0);
         hasher.update(self.epoch.to_le_bytes());
         hasher.update(self.height.to_le_bytes());
-        hasher.update(self.val.to_le_bytes());
+        hasher.update(self.round.to_le_bytes());
+        hasher.update(self.phase.to_le_bytes());
         Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
     }
 }
 
-impl fmt::Debug for Prepare {
+impl fmt::Debug for SMVBAProposal {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{}: Prepare(author {}, epoch {},  height {}, val {})",
-            self.digest(),
-            self.author,
-            self.epoch,
-            self.height,
-            self.val
+            "SMVBAProposal(epoch {}, height {},round {})",
+            self.epoch, self.height, self.round,
         )
     }
 }
-/************************** pre-prepare Struct ************************************/
+
+impl fmt::Display for SMVBAProposal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAProposal(epoch {},  height {},round {})",
+            self.epoch, self.height, self.round,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct SMVBAVote {
+    pub author: PublicKey,
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber, //SMVBA 的轮数
+    pub phase: u8,        //SPB 的阶段（VAL，AUX）
+    pub digest: Digest,   //Proposal的hash
+    pub signature: Signature,
+}
+
+impl SMVBAVote {
+    pub fn new(
+        author: PublicKey,
+        proposal: &SMVBAProposal,
+        mut signature_service: SignatureService,
+    ) -> Self {
+        let mut vote = Self {
+            author,
+            epoch: proposal.epoch,
+            height: proposal.height,
+            round: proposal.round,
+            phase: proposal.phase,
+            digest: proposal.digest(),
+            signature: Signature::default(),
+        };
+        vote.signature = signature_service.request_signature(vote.digest());
+        return proposal;
+    }
+
+    pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
+        // Ensure the authority has voting rights.
+        let voting_rights = committee.stake(&self.author);
+        ensure!(
+            voting_rights > 0,
+            ConsensusError::UnknownAuthority(self.author)
+        );
+
+        // Check the signature.
+        self.signature.verify(&self.digest(), &self.author)?;
+
+        Ok(())
+    }
+}
+
+impl Hash for SMVBAVote {
+    fn digest(&self) -> Digest {
+        let mut hasher = Sha512::new();
+        hasher.update(self.author.0);
+        hasher.update(self.epoch.to_le_bytes());
+        hasher.update(self.height.to_le_bytes());
+        hasher.update(self.round.to_le_bytes());
+        hasher.update(self.phase.to_le_bytes());
+        hasher.update(self.digest.0);
+        Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
+    }
+}
+
+impl fmt::Debug for SMVBAVote {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAVote(epoch {}, height {},round {},phase {})",
+            self.epoch, self.height, self.round, self.phase
+        )
+    }
+}
+
+impl fmt::Display for SMVBAVote {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAVote(epoch {}, height {},round {},phase {})",
+            self.epoch, self.height, self.round, self.phase,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct SMVBAProof {
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber,
+    pub votes: Vec<SMVBAVote>,
+    pub phase: u8,
+}
+
+impl SMVBAProof {
+    pub fn new(epoch: SeqNumber, height: SeqNumber, round: SeqNumber, phase: u8) -> Self {
+        Self {
+            epoch,
+            height,
+            round,
+            votes: Vec::new(),
+            phase,
+        }
+    }
+}
+
+impl fmt::Debug for SMVBAProof {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAProof(epoch {}, height {},round {},phase {})",
+            self.epoch, self.height, self.round, self.phase
+        )
+    }
+}
+
+impl fmt::Display for SMVBAProof {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAProof(epoch {}, height {},round {},phase {})",
+            self.epoch, self.height, self.round, self.phase,
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct SMVBAFinish {
+    pub author: PublicKey,
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber, //SMVBA 的轮数
+    pub signature: Signature,
+}
+
+impl SMVBAFinish {
+    pub fn new(
+        author: PublicKey,
+        epoch: SeqNumber,
+        height: SeqNumber,
+        round: SeqNumber,
+        mut signature_service: SignatureService,
+    ) -> Self {
+        let mut finish = Self {
+            author,
+            epoch,
+            height,
+            round,
+            signature: Signature::default(),
+        };
+        finish.signature = signature_service.request_signature(proposal.digest());
+        return proposal;
+    }
+
+    pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
+        // Ensure the authority has voting rights.
+        let voting_rights = committee.stake(&self.author);
+        ensure!(
+            voting_rights > 0,
+            ConsensusError::UnknownAuthority(self.author)
+        );
+
+        // Check the signature.
+        self.signature.verify(&self.digest(), &self.author)?;
+
+        Ok(())
+    }
+}
+
+impl Hash for SMVBAFinish {
+    fn digest(&self) -> Digest {
+        let mut hasher = Sha512::new();
+        hasher.update(self.author.0);
+        hasher.update(self.epoch.to_le_bytes());
+        hasher.update(self.height.to_le_bytes());
+        hasher.update(self.round.to_le_bytes());
+        Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
+    }
+}
+
+impl fmt::Debug for SMVBAFinish {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAFinish(epoch {}, height {},round {})",
+            self.epoch, self.height, self.round
+        )
+    }
+}
+
+impl fmt::Display for SMVBAFinish {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBAFinish(epoch {}, height {},round {})",
+            self.epoch, self.height, self.round
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct SMVBADone {
+    pub author: PublicKey,
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber, //SMVBA 的轮数
+    pub signature: Signature,
+}
+
+impl SMVBADone {
+    pub fn new(
+        author: PublicKey,
+        epoch: SeqNumber,
+        height: SeqNumber,
+        round: SeqNumber,
+        mut signature_service: SignatureService,
+    ) -> Self {
+        let mut finish = Self {
+            author,
+            epoch,
+            height,
+            round,
+            signature: Signature::default(),
+        };
+        finish.signature = signature_service.request_signature(proposal.digest());
+        return proposal;
+    }
+
+    pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
+        // Ensure the authority has voting rights.
+        let voting_rights = committee.stake(&self.author);
+        ensure!(
+            voting_rights > 0,
+            ConsensusError::UnknownAuthority(self.author)
+        );
+
+        // Check the signature.
+        self.signature.verify(&self.digest(), &self.author)?;
+
+        Ok(())
+    }
+}
+
+impl Hash for SMVBADone {
+    fn digest(&self) -> Digest {
+        let mut hasher = Sha512::new();
+        hasher.update(self.author.0);
+        hasher.update(self.epoch.to_le_bytes());
+        hasher.update(self.height.to_le_bytes());
+        hasher.update(self.round.to_le_bytes());
+        Digest(hasher.finalize().as_slice()[..32].try_into().unwrap())
+    }
+}
+
+impl fmt::Debug for SMVBADone {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBADone(epoch {}, height {},round {})",
+            self.epoch, self.height, self.round
+        )
+    }
+}
+
+impl fmt::Display for SMVBADone {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "SMVBADone(epoch {}, height {},round {})",
+            self.epoch, self.height, self.round
+        )
+    }
+}
+
+/************************** SMVBA Struct ************************************/
 
 /************************** ABA Struct ************************************/
 #[derive(Clone, Serialize, Deserialize)]
@@ -453,8 +724,7 @@ impl ABAVal {
     }
 
     pub fn rank(&self, committee: &Committee) -> usize {
-        let r =
-            ((self.epoch as usize) * committee.size() + (self.height as usize)) % MAX_BLOCK_BUFFER;
+        let r = (self.epoch as usize) * committee.size() + (self.height as usize);
         r
     }
 }
@@ -527,8 +797,7 @@ impl ABAOutput {
     }
 
     pub fn rank(&self, committee: &Committee) -> usize {
-        let r =
-            ((self.epoch as usize) * committee.size() + (self.height as usize)) % MAX_BLOCK_BUFFER;
+        let r = (self.epoch as usize) * committee.size() + (self.height as usize);
         r
     }
 }
