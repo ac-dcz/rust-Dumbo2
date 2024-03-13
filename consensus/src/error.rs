@@ -65,6 +65,9 @@ pub enum ConsensusError {
     #[error("Received vote from unknown authority {0}")]
     UnknownAuthority(PublicKey),
 
+    #[error("Received proof not from current leader {0}")]
+    SMVBANotFormLeader(PublicKey),
+
     #[error("Received QC without a quorum")]
     QCRequiresQuorum,
 
