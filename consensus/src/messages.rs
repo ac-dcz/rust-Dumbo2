@@ -341,6 +341,7 @@ pub struct SMVBAProposal {
     pub round: SeqNumber, //SMVBA 的轮数
     pub phase: u8,        //SPB 的阶段（VAL，AUX）
     pub vals: Vec<bool>,
+    pub proof: SMVBAProof,
     pub signature: Signature,
 }
 
@@ -352,6 +353,7 @@ impl SMVBAProposal {
         round: SeqNumber,
         phase: u8,
         vals: Vec<bool>,
+        proof: SMVBAProof,
         mut signature_service: SignatureService,
     ) -> Self {
         let mut proposal = Self {
@@ -361,6 +363,7 @@ impl SMVBAProposal {
             round,
             phase,
             vals,
+            proof,
             signature: Signature::default(),
         };
         proposal.signature = signature_service.request_signature(proposal.digest()).await;
@@ -417,6 +420,7 @@ impl fmt::Display for SMVBAProposal {
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SMVBAVote {
     pub author: PublicKey,
+    pub proposer: PublicKey,
     pub epoch: SeqNumber,
     pub height: SeqNumber,
     pub round: SeqNumber, //SMVBA 的轮数
@@ -433,6 +437,7 @@ impl SMVBAVote {
     ) -> Self {
         let mut vote = Self {
             author,
+            proposer: proposal.author,
             epoch: proposal.epoch,
             height: proposal.height,
             round: proposal.round,
@@ -563,6 +568,7 @@ pub struct SMVBAFinish {
     pub epoch: SeqNumber,
     pub height: SeqNumber,
     pub round: SeqNumber, //SMVBA 的轮数
+    pub proof: SMVBAProof,
     pub signature: Signature,
 }
 
@@ -572,6 +578,7 @@ impl SMVBAFinish {
         epoch: SeqNumber,
         height: SeqNumber,
         round: SeqNumber,
+        proof: SMVBAProof,
         mut signature_service: SignatureService,
     ) -> Self {
         let mut finish = Self {
@@ -579,6 +586,7 @@ impl SMVBAFinish {
             epoch,
             height,
             round,
+            proof,
             signature: Signature::default(),
         };
         finish.signature = signature_service.request_signature(finish.digest()).await;
@@ -888,7 +896,7 @@ impl fmt::Display for SMVBAFinVote {
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SMVBAHalt {
     author: PublicKey,
-    proposer: PublicKey,
+    leader: PublicKey,
     epoch: SeqNumber,
     height: SeqNumber,
     round: SeqNumber,
@@ -899,7 +907,7 @@ pub struct SMVBAHalt {
 impl SMVBAHalt {
     pub async fn new(
         author: PublicKey,
-        proposer: PublicKey,
+        leader: PublicKey,
         epoch: SeqNumber,
         height: SeqNumber,
         round: SeqNumber,
@@ -908,7 +916,7 @@ impl SMVBAHalt {
     ) -> Self {
         let mut lock = Self {
             author,
-            proposer,
+            leader,
             epoch,
             height,
             round,
@@ -927,8 +935,8 @@ impl SMVBAHalt {
         );
 
         ensure!(
-            self.proposer == self.proof.proposer && self.proof.phase == FINISH_PHASE,
-            ConsensusError::SMVBANotFormLeader(self.proposer)
+            self.leader == self.proof.proposer && self.proof.phase == FINISH_PHASE,
+            ConsensusError::SMVBANotFormLeader(self.leader)
         );
 
         // Check the signature.
@@ -942,7 +950,7 @@ impl Hash for SMVBAHalt {
     fn digest(&self) -> Digest {
         let mut hasher = Sha512::new();
         hasher.update(self.author.0);
-        hasher.update(self.proposer.0);
+        hasher.update(self.leader.0);
         hasher.update(self.epoch.to_le_bytes());
         hasher.update(self.height.to_le_bytes());
         hasher.update(self.round.to_le_bytes());
@@ -955,7 +963,7 @@ impl fmt::Debug for SMVBAHalt {
         write!(
             f,
             "SMVBAHalt(epoch {}, height {},round {},leader {})",
-            self.epoch, self.height, self.round, self.proposer
+            self.epoch, self.height, self.round, self.leader
         )
     }
 }
@@ -965,7 +973,7 @@ impl fmt::Display for SMVBAHalt {
         write!(
             f,
             "SMVBAHalt(epoch {}, height {},round {},leader {})",
-            self.epoch, self.height, self.round, self.proposer
+            self.epoch, self.height, self.round, self.leader
         )
     }
 }
