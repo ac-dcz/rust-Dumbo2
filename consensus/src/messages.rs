@@ -715,20 +715,20 @@ impl fmt::Display for SMVBADone {
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SMVBALockVote {
-    author: PublicKey,
-    proposer: PublicKey,
-    epoch: SeqNumber,
-    height: SeqNumber,
-    round: SeqNumber,
-    proof: SMVBAProof,
-    tag: u8,
-    signature: Signature,
+    pub author: PublicKey,
+    pub leader: PublicKey,
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber,
+    pub proof: SMVBAProof,
+    pub tag: u8,
+    pub signature: Signature,
 }
 
 impl SMVBALockVote {
     pub async fn new(
         author: PublicKey,
-        proposer: PublicKey,
+        leader: PublicKey,
         epoch: SeqNumber,
         height: SeqNumber,
         round: SeqNumber,
@@ -738,7 +738,7 @@ impl SMVBALockVote {
     ) -> Self {
         let mut lock = Self {
             author,
-            proposer,
+            leader,
             epoch,
             height,
             round,
@@ -750,7 +750,7 @@ impl SMVBALockVote {
         return lock;
     }
 
-    pub fn verify(&self, committee: Committee) -> ConsensusResult<()> {
+    pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
@@ -758,8 +758,8 @@ impl SMVBALockVote {
         );
         if self.tag == OPT {
             ensure!(
-                self.proposer == self.proof.proposer && self.proof.phase == LOCK_PHASE,
-                ConsensusError::SMVBANotFormLeader(self.proposer)
+                self.leader == self.proof.proposer && self.proof.phase == LOCK_PHASE,
+                ConsensusError::SMVBANotFormLeader(self.leader)
             )
         }
 
@@ -774,7 +774,7 @@ impl Hash for SMVBALockVote {
     fn digest(&self) -> Digest {
         let mut hasher = Sha512::new();
         hasher.update(self.author.0);
-        hasher.update(self.proposer.0);
+        hasher.update(self.leader.0);
         hasher.update(self.epoch.to_le_bytes());
         hasher.update(self.height.to_le_bytes());
         hasher.update(self.round.to_le_bytes());
@@ -805,34 +805,31 @@ impl fmt::Display for SMVBALockVote {
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SMVBAFinVote {
-    author: PublicKey,
-    proposer: PublicKey,
-    epoch: SeqNumber,
-    height: SeqNumber,
-    round: SeqNumber,
-    proof: SMVBAProof,
-    tag: u8,
-    signature: Signature,
+    pub author: PublicKey,
+    pub leader: PublicKey,
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber,
+    pub tag: u8,
+    pub signature: Signature,
 }
 
 impl SMVBAFinVote {
     pub async fn new(
         author: PublicKey,
-        proposer: PublicKey,
+        leader: PublicKey,
         epoch: SeqNumber,
         height: SeqNumber,
         round: SeqNumber,
-        proof: SMVBAProof,
         tag: u8,
         mut siganture_service: SignatureService,
     ) -> Self {
         let mut lock = Self {
             author,
-            proposer,
+            leader,
             epoch,
             height,
             round,
-            proof,
             tag,
             signature: Signature::default(),
         };
@@ -840,22 +837,21 @@ impl SMVBAFinVote {
         return lock;
     }
 
-    pub fn verify(&self, committee: Committee) -> ConsensusResult<()> {
+    pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
             ConsensusError::UnknownAuthority(self.author)
         );
-        if self.tag == OPT {
-            ensure!(
-                self.proposer == self.proof.proposer && self.proof.phase == FINISH_PHASE,
-                ConsensusError::SMVBANotFormLeader(self.proposer)
-            )
-        }
+        // if self.tag == OPT {
+        //     ensure!(
+        //         self.proposer == self.proof.proposer && self.proof.phase == FINISH_PHASE,
+        //         ConsensusError::SMVBANotFormLeader(self.proposer)
+        //     )
+        // }
 
         // Check the signature.
         self.signature.verify(&self.digest(), &self.author)?;
-        self.proof.verify(&committee)?;
         Ok(())
     }
 }
@@ -864,7 +860,7 @@ impl Hash for SMVBAFinVote {
     fn digest(&self) -> Digest {
         let mut hasher = Sha512::new();
         hasher.update(self.author.0);
-        hasher.update(self.proposer.0);
+        hasher.update(self.leader.0);
         hasher.update(self.epoch.to_le_bytes());
         hasher.update(self.height.to_le_bytes());
         hasher.update(self.round.to_le_bytes());
@@ -895,13 +891,13 @@ impl fmt::Display for SMVBAFinVote {
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SMVBAHalt {
-    author: PublicKey,
-    leader: PublicKey,
-    epoch: SeqNumber,
-    height: SeqNumber,
-    round: SeqNumber,
-    proof: SMVBAProof,
-    signature: Signature,
+    pub author: PublicKey,
+    pub leader: PublicKey,
+    pub epoch: SeqNumber,
+    pub height: SeqNumber,
+    pub round: SeqNumber,
+    pub proof: SMVBAProof,
+    pub signature: Signature,
 }
 
 impl SMVBAHalt {
@@ -927,7 +923,7 @@ impl SMVBAHalt {
         return lock;
     }
 
-    pub fn verify(&self, committee: Committee) -> ConsensusResult<()> {
+    pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
