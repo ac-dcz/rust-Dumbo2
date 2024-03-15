@@ -2,7 +2,7 @@ use crate::config::{Committee, Stake};
 use crate::core::{SeqNumber, RBC_ECHO, RBC_READY};
 use crate::error::{ConsensusError, ConsensusResult};
 use crate::messages::{EchoVote, RBCProof, RandomnessShare, ReadyVote, SMVBAProof, SMVBAVote};
-use crypto::{PublicKey, SecretKey, Signature};
+use crypto::{PublicKey, Signature};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryInto;
 use threshold_crypto::PublicKeySet;

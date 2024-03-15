@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::vec;
 
 use crate::aggregator::Aggregator;
 use crate::config::{Committee, Parameters, Stake};
@@ -11,7 +12,7 @@ use crate::messages::{
 };
 use crate::synchronizer::Synchronizer;
 use async_recursion::async_recursion;
-use crypto::{Digest, PublicKey, SignatureService};
+use crypto::{Digest, Hash, PublicKey, SignatureService};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use store::Store;
@@ -181,8 +182,19 @@ impl Core {
             .await;
         self.rbc_proofs.retain(|(e, ..), _| *e > epoch);
         self.rbc_ready.retain(|(e, ..)| *e > epoch);
-        // self.rbc_outputs.retain(|(e, h, ..), _| e * size + h > rank);
-        // self.prepare_flags.retain(|(e, h), _| e * size + h > rank);
+        self.smvba_invoke.retain(|e| *e > epoch);
+        self.smvba_proposal.retain(|(e, ..), _| *e > epoch);
+        self.smvba_lock_proof.retain(|(e, ..), _| *e > epoch);
+        self.smvba_finish_proof.retain(|(e, ..), _| *e > epoch);
+        self.smvba_finish.retain(|(e, ..), _| *e > epoch);
+        self.smvba_done.retain(|(e, ..), _| *e > epoch);
+        self.smvba_send_done.retain(|(e, ..)| *e > epoch);
+        self.smvba_leader.retain(|(e, ..), _| *e > epoch);
+        self.smvba_lock_pes.retain(|(e, ..), _| *e > epoch);
+        self.smvba_send_finvote.retain(|(e, ..)| *e > epoch);
+        self.smvba_finish_opt.retain(|(e, ..), _| *e > epoch);
+        self.smvba_finish_pes.retain(|(e, ..), _| *e > epoch);
+        self.smvba_send_halt.retain(|e| *e > epoch);
         Ok(())
     }
 
@@ -410,6 +422,9 @@ impl Core {
 
     /************* SMVBA Protocol ******************/
     fn mvba_message_filter(&self, epoch: SeqNumber, _round: SeqNumber) -> bool {
+        if epoch < self.epoch {
+            return true;
+        }
         return self.smvba_send_halt.contains(&epoch);
     }
 
@@ -634,32 +649,14 @@ impl Core {
                 .smvba_finish_proof
                 .contains_key(&(share.epoch, leader, share.round))
             {
-                self.smvba_send_halt.insert(share.epoch);
                 //halt phase
                 let proof = self
                     .smvba_finish_proof
                     .entry((share.epoch, leader, share.round))
-                    .or_default();
-                let halt = SMVBAHalt::new(
-                    self.name,
-                    leader,
-                    share.epoch,
-                    self.height,
-                    share.round,
-                    proof.clone(),
-                    self.signature_service.clone(),
-                )
-                .await;
-                let message = ConsensusMessage::MVBAHaltMsg(halt.clone());
-                Synchronizer::transmit(
-                    message,
-                    &self.name,
-                    None,
-                    &self.network_filter,
-                    &self.committee,
-                )
-                .await?;
-                self.handle_mvba_halt(&halt).await?;
+                    .or_default()
+                    .clone();
+                self.process_mvba_halt(share.epoch, share.round, leader, proof)
+                    .await?;
             } else {
                 //pre-vote phase
                 let mut lock_vote = SMVBALockVote::new(
@@ -683,6 +680,10 @@ impl Core {
                         .or_default();
                     lock_vote.proof = proof.clone();
                     lock_vote.tag = OPT;
+                    lock_vote.signature = self
+                        .signature_service
+                        .request_signature(lock_vote.digest())
+                        .await;
                 }
                 let message = ConsensusMessage::MVBALockVoteMsg(lock_vote.clone());
                 Synchronizer::transmit(
@@ -786,7 +787,6 @@ impl Core {
             let pes_num = set_pes.len() as Stake;
             // if opt_num
             if opt_num == self.committee.quorum_threshold() {
-                self.smvba_send_halt.insert(vote.epoch);
                 let proof = SMVBAProof::new(
                     vote.leader,
                     vote.epoch,
@@ -794,26 +794,8 @@ impl Core {
                     vote.round,
                     FINISH_PHASE,
                 );
-                let halt = SMVBAHalt::new(
-                    self.name,
-                    vote.leader,
-                    vote.epoch,
-                    self.height,
-                    vote.round,
-                    proof,
-                    self.signature_service.clone(),
-                )
-                .await;
-                let message = ConsensusMessage::MVBAHaltMsg(halt.clone());
-                Synchronizer::transmit(
-                    message,
-                    &self.name,
-                    None,
-                    &self.network_filter,
-                    &self.committee,
-                )
-                .await?;
-                self.handle_mvba_halt(&halt).await?;
+                self.process_mvba_halt(vote.epoch, vote.round, vote.leader, proof)
+                    .await?;
             } else if pes_num == self.committee.quorum_threshold() {
                 let vals = self
                     .smvba_proposal
@@ -840,20 +822,34 @@ impl Core {
         debug!("Processing {}", halt);
         if !self.mvba_message_filter(halt.epoch, halt.round) {
             halt.verify(&self.committee)?;
-            self.smvba_send_halt.insert(halt.epoch);
+            self.process_mvba_halt(halt.epoch, halt.round, halt.leader, halt.proof.clone())
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn process_mvba_halt(
+        &mut self,
+        epoch: SeqNumber,
+        round: SeqNumber,
+        leader: PublicKey,
+        proof: SMVBAProof,
+    ) -> ConsensusResult<()> {
+        if !self.mvba_message_filter(epoch, round) {
+            self.smvba_send_halt.insert(epoch);
             self.smvba_finish_proof
-                .insert((halt.epoch, halt.leader, halt.round), halt.proof.clone());
-            let _halt = SMVBAHalt::new(
+                .insert((epoch, leader, round), proof.clone());
+            let halt = SMVBAHalt::new(
                 self.name,
-                halt.leader,
-                halt.epoch,
+                leader,
+                epoch,
                 self.height,
-                halt.round,
-                halt.proof.clone(),
+                round,
+                proof.clone(),
                 self.signature_service.clone(),
             )
             .await;
-            let message = ConsensusMessage::MVBAHaltMsg(_halt);
+            let message = ConsensusMessage::MVBAHaltMsg(halt);
             Synchronizer::transmit(
                 message,
                 &self.name,
@@ -862,6 +858,8 @@ impl Core {
                 &self.committee,
             )
             .await?;
+            self.handle_epoch_end(epoch, self.committee.id(leader) as SeqNumber)
+                .await?;
         }
         Ok(())
     }
@@ -899,35 +897,44 @@ impl Core {
     }
     /************* SMVBA Protocol ******************/
 
-    // pub async fn handle_epoch_end(&mut self, epoch: SeqNumber) -> ConsensusResult<()> {
-    //     let mut data: Vec<Block> = Vec::new();
+    pub async fn handle_epoch_end(
+        &mut self,
+        epoch: SeqNumber,
+        height: SeqNumber,
+    ) -> ConsensusResult<()> {
+        let mut data: Vec<Block> = Vec::new();
+        let vals = self
+            .smvba_proposal
+            .entry((epoch, height))
+            .or_insert(Vec::new());
 
-    //     for height in 0..(self.committee.size() as SeqNumber) {
-    //         if *self.aba_ends.get(&(epoch, height)).unwrap() == OPT {
-    //             if let Some(block) = self
-    //                 .synchronizer
-    //                 .block_request(epoch, height, &self.committee)
-    //                 .await?
-    //             {
-    //                 if !self.mempool_driver.verify(block.clone()).await? {
-    //                     return Ok(());
-    //                 }
-    //                 data.push(block);
-    //             }
-    //         }
-    //     }
-    //     self.commit(data).await?;
-    //     self.advance_epoch(epoch + 1).await?;
-    //     Ok(())
-    // }
+        for height in 0..self.committee.size() {
+            if height < vals.len() && vals[height] {
+                if let Some(block) = self
+                    .synchronizer
+                    .block_request(epoch, height as SeqNumber, &self.committee)
+                    .await?
+                {
+                    if !self.mempool_driver.verify(block.clone()).await? {
+                        return Ok(());
+                    }
+                    data.push(block);
+                }
+            }
+        }
 
-    // pub async fn advance_epoch(&mut self, epoch: SeqNumber) -> ConsensusResult<()> {
-    //     if epoch > self.epoch {
-    //         self.epoch = epoch;
-    //         self.generate_rbc_proposal().await?;
-    //     }
-    //     Ok(())
-    // }
+        self.commit(data).await?;
+        self.advance_epoch(epoch + 1).await?;
+        Ok(())
+    }
+
+    pub async fn advance_epoch(&mut self, epoch: SeqNumber) -> ConsensusResult<()> {
+        if epoch > self.epoch {
+            self.epoch = epoch;
+            self.generate_rbc_proposal().await?;
+        }
+        Ok(())
+    }
 
     pub async fn run(&mut self) {
         if let Err(e) = self.generate_rbc_proposal().await {
