@@ -26,13 +26,13 @@ This command may take a long time the first time you run it (compiling rust code
  SUMMARY:
 -----------------------------------------
  + CONFIG:
- Protocol: 0
- DDOS attack: False
+ Protocol: 0 
+ DDOS attack: False 
  Committee size: 4 nodes
- Input rate: 1,000 tx/s
+ Input rate: 10,000 tx/s
  Transaction size: 512 B
  Faults: 0 nodes
- Execution time: 22 s
+ Execution time: 1 s
 
  Consensus timeout delay: 2,000 ms
  Consensus sync retry delay: 10,000 ms
@@ -43,11 +43,12 @@ This command may take a long time the first time you run it (compiling rust code
  Mempool min block delay: 0 ms
 
  + RESULTS:
- Consensus TPS: 966 tx/s
- Consensus BPS: 494,380 B/s
- Consensus latency: 84 ms
+ Consensus TPS: 10,486 tx/s
+ Consensus BPS: 5,368,841 B/s
+ Consensus latency: 53 ms
 
- End-to-end TPS: 960 tx/s
- End-to-end BPS: 491,308 B/s
- End-to-end latency: 169 ms
+ End-to-end TPS: 9,509 tx/s
+ End-to-end BPS: 4,868,387 B/s
+ End-to-end latency: 89 ms
+-----------------------------------------
 ```
