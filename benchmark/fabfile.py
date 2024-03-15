@@ -13,7 +13,7 @@ def local(ctx):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'nodes': 4,
-        'rate': 1000,
+        'rate': 10_000,
         'tx_size': 512,
         'faults': 0,
         'duration': 30,
@@ -27,7 +27,7 @@ def local(ctx):
             'min_block_delay': 0,
             'network_delay': 20_000, # message delay on the leaders' proposals during DDoS
             'ddos': False, # True for DDoS attack on the leader, False otherwise
-            'random_ddos': True,
+            'random_ddos': False,
             'random_chance': 10,
             'exp': 1 # multiplicative factor for exponential fallback
         },

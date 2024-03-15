@@ -496,7 +496,7 @@ impl Core {
     #[async_recursion]
     async fn handle_mvba_pbvote(&mut self, vote: &SMVBAVote) -> ConsensusResult<()> {
         debug!("Procesing {}", vote);
-        if self.mvba_message_filter(vote.epoch, vote.round) {
+        if self.mvba_message_filter(vote.epoch, vote.round) || vote.proposer != self.name {
             return Ok(());
         }
         vote.verify(&self.committee)?;
@@ -915,9 +915,9 @@ impl Core {
                     .block_request(epoch, height as SeqNumber, &self.committee)
                     .await?
                 {
-                    if !self.mempool_driver.verify(block.clone()).await? {
-                        return Ok(());
-                    }
+                    // if !self.mempool_driver.verify(block.clone()).await? {
+                    //     return Ok(());
+                    // }
                     data.push(block);
                 }
             }

@@ -102,7 +102,7 @@ class LocalBench:
                 self._background_run(cmd, log_file)
             
             if self.node_parameters.protocol == 0:
-                Print.info('Running Flexible Honey Badger BFT')
+                Print.info('Running Dumbo2')
             else:
                 Print.info('Wrong protocol type!')
                 return

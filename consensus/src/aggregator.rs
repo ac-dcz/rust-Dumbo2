@@ -171,7 +171,8 @@ impl RandomCoinMaker {
                 );
             }
             if let Ok(sig) = pk_set.combine_signatures(sigs.iter()) {
-                let id = usize::from_be_bytes((&sig.to_bytes()[0..8]).try_into().unwrap());
+                let id = usize::from_be_bytes((&sig.to_bytes()[0..8]).try_into().unwrap())
+                    % committee.size();
                 let mut keys: Vec<_> = committee.authorities.keys().cloned().collect();
                 keys.sort();
                 let leader = keys[id];

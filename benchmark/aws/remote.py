@@ -287,7 +287,7 @@ class Bench:
             raise BenchError('Failed to update nodes', e)
 
         if node_parameters.protocol == 0:
-            Print.info('Running Flexible Honey Badger BFT')
+            Print.info('Running Dumbo2')
         else:
             Print.info('Wrong protocol type!')
             return
