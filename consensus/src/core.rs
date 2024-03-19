@@ -78,7 +78,7 @@ pub struct Core {
     smvba_finish: HashMap<(SeqNumber, SeqNumber), HashSet<SeqNumber>>,
     smvba_done: HashMap<(SeqNumber, SeqNumber), HashSet<SeqNumber>>,
     smvba_send_done: HashSet<(SeqNumber, SeqNumber)>,
-    smvba_leader: HashMap<(SeqNumber, SeqNumber), Option<PublicKey>>,
+    smvba_leader: HashMap<SeqNumber, Option<PublicKey>>,
     smvba_lock_pes: HashMap<(SeqNumber, SeqNumber), HashSet<SeqNumber>>,
     smvba_send_finvote: HashSet<(SeqNumber, SeqNumber)>,
     smvba_finish_opt: HashMap<(SeqNumber, SeqNumber), HashSet<SeqNumber>>,
@@ -189,7 +189,7 @@ impl Core {
         self.smvba_finish.retain(|(e, ..), _| *e > epoch);
         self.smvba_done.retain(|(e, ..), _| *e > epoch);
         self.smvba_send_done.retain(|(e, ..)| *e > epoch);
-        self.smvba_leader.retain(|(e, ..), _| *e > epoch);
+        self.smvba_leader.retain(|e, _| *e > epoch);
         self.smvba_lock_pes.retain(|(e, ..), _| *e > epoch);
         self.smvba_send_finvote.retain(|(e, ..)| *e > epoch);
         self.smvba_finish_opt.retain(|(e, ..), _| *e > epoch);
@@ -254,7 +254,9 @@ impl Core {
             "processing RBC val epoch {} height {}",
             block.epoch, block.height
         );
-        block.verify(&self.committee)?;
+        if self.parameters.exp > 0 {
+            block.verify(&self.committee)?;
+        }
         self.store_block(block).await;
 
         let vote = EchoVote::new(
@@ -285,30 +287,33 @@ impl Core {
             "processing RBC echo_vote epoch {} height {}",
             vote.epoch, vote.height
         );
-        vote.verify(&self.committee)?;
+        if self.parameters.exp > 0 {
+            vote.verify(&self.committee)?;
+        }
 
         if let Some(proof) = self.aggregator.add_rbc_echo_vote(vote)? {
             self.rbc_proofs
                 .insert((proof.epoch, proof.height, proof.tag), proof);
-            self.rbc_ready.insert((vote.epoch, vote.height));
-            let ready = ReadyVote::new(
-                self.name,
-                vote.epoch,
-                vote.height,
-                vote.digest.clone(),
-                self.signature_service.clone(),
-            )
-            .await;
-            let message = ConsensusMessage::RBCReadyMsg(ready.clone());
-            Synchronizer::transmit(
-                message,
-                &self.name,
-                None,
-                &self.network_filter,
-                &self.committee,
-            )
-            .await?;
-            self.handle_rbc_ready(&ready).await?;
+            if self.rbc_ready.insert((vote.epoch, vote.height)) {
+                let ready = ReadyVote::new(
+                    self.name,
+                    vote.epoch,
+                    vote.height,
+                    vote.digest.clone(),
+                    self.signature_service.clone(),
+                )
+                .await;
+                let message = ConsensusMessage::RBCReadyMsg(ready.clone());
+                Synchronizer::transmit(
+                    message,
+                    &self.name,
+                    None,
+                    &self.network_filter,
+                    &self.committee,
+                )
+                .await?;
+                self.handle_rbc_ready(&ready).await?;
+            }
         }
 
         Ok(())
@@ -320,7 +325,9 @@ impl Core {
             "processing RBC ready_vote epoch {} height {}",
             vote.epoch, vote.height
         );
-        vote.verify(&self.committee)?;
+        if self.parameters.exp > 0 {
+            vote.verify(&self.committee)?;
+        }
 
         if let Some(proof) = self.aggregator.add_rbc_ready_vote(vote)? {
             let flag = self.rbc_ready.contains(&(vote.epoch, vote.height));
@@ -415,7 +422,10 @@ impl Core {
         );
         block.verify(&self.committee)?;
         self.store_block(block).await;
-        self.process_rbc_output(block.epoch, block.height).await?;
+        if let Some(leader) = self.smvba_leader.entry(block.epoch).or_insert(None).clone() {
+            self.handle_epoch_end(block.epoch, self.committee.id(leader) as SeqNumber)
+                .await?;
+        }
         Ok(())
     }
     /************* RBC Protocol ******************/
@@ -643,8 +653,7 @@ impl Core {
         debug!("Processing {:?}", share);
         share.verify(&self.committee, &self.pk_set)?;
         if let Some(leader) = self.aggregator.add_smvba_share_coin(share, &self.pk_set)? {
-            self.smvba_leader
-                .insert((share.epoch, share.round), Some(leader));
+            self.smvba_leader.insert(share.epoch, Some(leader));
             if self
                 .smvba_finish_proof
                 .contains_key(&(share.epoch, leader, share.round))

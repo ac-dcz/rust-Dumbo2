@@ -52,7 +52,7 @@ impl Block {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("block"))
         );
 
         // Check the signature.
@@ -143,7 +143,7 @@ impl EchoVote {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("echo"))
         );
 
         // Check the signature.
@@ -228,7 +228,7 @@ impl ReadyVote {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("ready"))
         );
 
         // Check the signature.
@@ -375,7 +375,7 @@ impl SMVBAProposal {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("smvba proposal"))
         );
 
         // Check the signature.
@@ -437,7 +437,7 @@ impl SMVBAVote {
     ) -> Self {
         let mut vote = Self {
             author,
-            proposer: proposal.author,
+            proposer: proposal.author.clone(),
             epoch: proposal.epoch,
             height: proposal.height,
             round: proposal.round,
@@ -454,7 +454,7 @@ impl SMVBAVote {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("mvba vote"))
         );
 
         // Check the signature.
@@ -527,11 +527,11 @@ impl SMVBAProof {
 
     pub fn verify(&self, committee: &Committee) -> ConsensusResult<()> {
         // Ensure the authority has voting rights.
-        let voting_rights = committee.stake(&self.proposer);
-        ensure!(
-            voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.proposer)
-        );
+        // let voting_rights = committee.stake(&self.proposer);
+        // ensure!(
+        //     voting_rights > 0,
+        //     ConsensusError::UnknownAuthority(self.proposer, String::from("smvba proof"))
+        // );
 
         // Check the signature.
         for vote in &self.votes {
@@ -598,7 +598,7 @@ impl SMVBAFinish {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("finish"))
         );
 
         // Check the signature.
@@ -672,7 +672,7 @@ impl SMVBADone {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("done"))
         );
 
         // Check the signature.
@@ -754,7 +754,7 @@ impl SMVBALockVote {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("lockvote"))
         );
         if self.tag == OPT {
             ensure!(
@@ -841,7 +841,7 @@ impl SMVBAFinVote {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("finish vote"))
         );
         // if self.tag == OPT {
         //     ensure!(
@@ -927,7 +927,7 @@ impl SMVBAHalt {
         let voting_rights = committee.stake(&self.author);
         ensure!(
             voting_rights > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("halt"))
         );
 
         ensure!(
@@ -1158,7 +1158,7 @@ impl RandomnessShare {
         // Ensure the authority has voting rights.
         ensure!(
             committee.stake(&self.author) > 0,
-            ConsensusError::UnknownAuthority(self.author)
+            ConsensusError::UnknownAuthority(self.author, String::from("share"))
         );
         let tss_pk = pk_set.public_key_share(committee.id(self.author));
         // Check the signature.

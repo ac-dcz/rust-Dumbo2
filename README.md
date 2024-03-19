@@ -32,7 +32,7 @@ This command may take a long time the first time you run it (compiling rust code
  Input rate: 10,000 tx/s
  Transaction size: 512 B
  Faults: 0 nodes
- Execution time: 1 s
+ Execution time: 32 s
 
  Consensus timeout delay: 2,000 ms
  Consensus sync retry delay: 10,000 ms
@@ -43,12 +43,12 @@ This command may take a long time the first time you run it (compiling rust code
  Mempool min block delay: 0 ms
 
  + RESULTS:
- Consensus TPS: 10,486 tx/s
- Consensus BPS: 5,368,841 B/s
- Consensus latency: 53 ms
+ Consensus TPS: 10,036 tx/s
+ Consensus BPS: 5,138,628 B/s
+ Consensus latency: 142 ms
 
- End-to-end TPS: 9,509 tx/s
- End-to-end BPS: 4,868,387 B/s
- End-to-end latency: 89 ms
+ End-to-end TPS: 9,985 tx/s
+ End-to-end BPS: 5,112,331 B/s
+ End-to-end latency: 188 ms
 -----------------------------------------
 ```

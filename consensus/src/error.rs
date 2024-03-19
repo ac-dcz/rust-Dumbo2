@@ -59,11 +59,14 @@ pub enum ConsensusError {
     #[error("Received more than one echo/ready vote from {0}")]
     AuthorityReuseinRBCVote(PublicKey),
 
+    #[error("Received more than one spb vote from {0}")]
+    AuthorityReuseinSPBVote(PublicKey),
+
     #[error("Received more than one Prepare from {0}")]
     AuthorityReuseinPrepare(PublicKey),
 
-    #[error("Received vote from unknown authority {0}")]
-    UnknownAuthority(PublicKey),
+    #[error("Received vote from unknown authority {0} {1}")]
+    UnknownAuthority(PublicKey, String),
 
     #[error("Received proof not from current leader {0}")]
     SMVBANotFormLeader(PublicKey),

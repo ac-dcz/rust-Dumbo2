@@ -207,7 +207,7 @@ impl SMVBAProofMaker {
         // Ensure it is the first time this authority votes.
         ensure!(
             self.used.insert(vote.author),
-            ConsensusError::AuthorityReuseinRBCVote(vote.author)
+            ConsensusError::AuthorityReuseinSPBVote(vote.author)
         );
         self.votes.push((vote.author, vote.signature.clone()));
         self.weight += committee.stake(&vote.author);
