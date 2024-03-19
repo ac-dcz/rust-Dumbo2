@@ -906,7 +906,15 @@ impl Core {
     }
     /************* SMVBA Protocol ******************/
 
-    pub async fn handle_epoch_end(
+    async fn handle_loopback(&mut self, epoch: SeqNumber) -> ConsensusResult<()> {
+        if let Some(leader) = self.smvba_leader.entry(epoch).or_insert(None).clone() {
+            self.handle_epoch_end(epoch, self.committee.id(leader) as SeqNumber)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_epoch_end(
         &mut self,
         epoch: SeqNumber,
         height: SeqNumber,
@@ -924,9 +932,9 @@ impl Core {
                     .block_request(epoch, height as SeqNumber, &self.committee)
                     .await?
                 {
-                    // if !self.mempool_driver.verify(block.clone()).await? {
-                    //     return Ok(());
-                    // }
+                    if !self.mempool_driver.verify(block.clone()).await? {
+                        return Ok(());
+                    }
                     data.push(block);
                 }
             }
@@ -937,7 +945,7 @@ impl Core {
         Ok(())
     }
 
-    pub async fn advance_epoch(&mut self, epoch: SeqNumber) -> ConsensusResult<()> {
+    async fn advance_epoch(&mut self, epoch: SeqNumber) -> ConsensusResult<()> {
         if epoch > self.epoch {
             self.epoch = epoch;
             self.generate_rbc_proposal().await?;
@@ -963,7 +971,7 @@ impl Core {
                         ConsensusMessage::MVBALockVoteMsg(vote)=>self.handle_mvba_lock_vote(&vote).await,
                         ConsensusMessage::MVBAFinishVoteMsg(vote)=>self.handle_mvba_finish_vote(&vote).await,
                         ConsensusMessage::MVBAHaltMsg(halt)=>self.handle_mvba_halt(&halt).await,
-                        ConsensusMessage::LoopBackMsg(epoch,height) => self.process_rbc_output(epoch,height).await,
+                        ConsensusMessage::LoopBackMsg(epoch,_) => self.handle_loopback(epoch).await,
                         ConsensusMessage::SyncRequestMsg(epoch,height, sender) => self.handle_sync_request(epoch,height, sender).await,
                         ConsensusMessage::SyncReplyMsg(block) => self.handle_sync_reply(&block).await,
                     }
