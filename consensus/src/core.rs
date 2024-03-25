@@ -200,8 +200,11 @@ impl Core {
 
     /************* RBC Protocol ******************/
     #[async_recursion]
-    async fn generate_rbc_proposal(&mut self) -> ConsensusResult<Block> {
+    async fn generate_rbc_proposal(&mut self) -> ConsensusResult<()> {
         // Make a new block.
+        if self.height < self.parameters.fault {
+            return Ok(());
+        }
         debug!("start rbc epoch {}", self.epoch);
         let payload = self
             .mempool_driver
@@ -246,7 +249,7 @@ impl Core {
         // Wait for the minimum block delay.
         sleep(Duration::from_millis(self.parameters.min_block_delay)).await;
 
-        Ok(block)
+        Ok(())
     }
 
     async fn handle_rbc_val(&mut self, block: &Block) -> ConsensusResult<()> {
