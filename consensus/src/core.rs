@@ -233,6 +233,9 @@ impl Core {
             }
         }
         debug!("Created {:?}", block);
+        //start
+        #[cfg(feature = "benchmark")]
+        info!("start epoch {} height {}", self.epoch, self.height);
 
         // Process our new block and broadcast it.
         let message = ConsensusMessage::RBCValMsg(block.clone());
@@ -380,6 +383,11 @@ impl Core {
             .entry(epoch)
             .or_insert(HashSet::new());
         if outputs.insert(height) {
+            if height == self.height {
+                //RBC end
+                #[cfg(feature = "benchmark")]
+                info!("end rbc epoch {} height {}", epoch, height);
+            }
             if outputs.len() as Stake == self.committee.quorum_threshold() {
                 let mut vals = Vec::new();
                 for height in 0..(self.committee.size() as SeqNumber) {
@@ -927,6 +935,10 @@ impl Core {
             .smvba_proposal
             .entry((epoch, height))
             .or_insert(Vec::new());
+
+        //end epoch
+        #[cfg(feature = "benchmark")]
+        info!("end epoch {} height {}", epoch, self.height);
 
         for height in 0..self.committee.size() {
             if height < vals.len() && vals[height] {
