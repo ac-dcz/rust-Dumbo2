@@ -975,6 +975,9 @@ impl Core {
         loop {
             let result = tokio::select! {
                 Some(message) = self.rx_core.recv() => {
+                    if self.height < self.parameters.fault {
+                       break;
+                    }
                     match message {
                         ConsensusMessage::RBCValMsg(block)=> self.handle_rbc_val(&block).await,
                         ConsensusMessage::RBCEchoMsg(evote)=> self.handle_rbc_echo(&evote).await,
