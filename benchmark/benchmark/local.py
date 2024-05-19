@@ -84,8 +84,9 @@ class LocalBench:
 
             self.node_parameters.print(PathMaker.parameters_file())
 
+            self.faults = self.node_parameters.fault
             # Do not boot faulty nodes.
-            nodes = nodes - self.faults
+            # nodes = nodes - self.faults
 
             # Run the clients (they will wait for the nodes to be ready).
             addresses = committee.front

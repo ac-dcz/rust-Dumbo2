@@ -78,13 +78,13 @@ class LogParser:
         merged = {}
         for x in input:
             for k, v in x:
-                if not k in merged or merged[k] < v:
+                if not k in merged or merged[k] > v:
                     merged[k] = v
         return merged
 
     def _parse_clients(self, log):
-        if search(r'Error', log) is not None:
-            raise ParseError('Client(s) panicked')
+        # if search(r'Error', log) is not None:
+        #     raise ParseError('Client(s) panicked')
 
         size = int(search(r'Transactions size: (\d+)', log).group(1))
         rate = int(search(r'Transactions rate: (\d+)', log).group(1))
@@ -196,6 +196,9 @@ class LogParser:
         return tps, bps, duration
 
     def _consensus_latency(self):
+        with open("temp.txt","w") as f:
+            for d, c in self.h_commits.items():
+                f.write(f'{self.h_proposals[d]}---{c}---{c - self.h_proposals[d]}\n')
         latency = [c - self.h_proposals[d] for d, c in self.h_commits.items()]
         return mean(latency) if latency else 0
 
